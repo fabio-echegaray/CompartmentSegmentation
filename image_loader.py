@@ -8,13 +8,13 @@ import tifffile as tf
 
 logger = logging.getLogger(__name__)
 
-MetadataImage = namedtuple('MetadataImage', ['image', 'pix_per_um', 'um_per_pix',
-                                             'time_interval', 'frames', 'channels',
-                                             'zstacks', 'width', 'height', 'series',
-                                             'timestamps', 'intensity_ranges'])
+MetadataImageSeries = namedtuple('MetadataImageSeries', ['image', 'pix_per_um', 'um_per_pix',
+                                                         'time_interval', 'frames', 'channels',
+                                                         'zstacks', 'width', 'height', 'series',
+                                                         'timestamps', 'intensity_ranges'])
 
 
-def load_tiff(file_or_path) -> MetadataImage:
+def load_tiff(file_or_path) -> MetadataImageSeries:
     if type(file_or_path) == str:
         _, img_name = os.path.split(file_or_path)
     if issubclass(type(file_or_path), io.BufferedIOBase):
@@ -57,12 +57,12 @@ def load_tiff(file_or_path) -> MetadataImage:
             shape = tif.series[0].shape
             frames = metadata['frames'] if 'frames' in metadata else 1
             ts = np.linspace(start=0, stop=frames * dt, num=frames) if dt is not None else None
-            return MetadataImage(image=np.asarray(images), pix_per_um=res, um_per_pix=1. / res,
-                                 time_interval=dt, frames=frames, timestamps=ts,
-                                 channels=metadata['channels'] if 'channels' in metadata else 1,
-                                 zstacks=shape[ax_dct['Z']] if 'Z' in ax_dct else 1,
-                                 width=width, height=height, series=tif.series[0],
-                                 intensity_ranges=metadata['Ranges'] if 'Ranges' in metadata else None)
+            return MetadataImageSeries(image=np.asarray(images), pix_per_um=res, um_per_pix=1. / res,
+                                       time_interval=dt, frames=frames, timestamps=ts,
+                                       channels=metadata['channels'] if 'channels' in metadata else 1,
+                                       zstacks=shape[ax_dct['Z']] if 'Z' in ax_dct else 1,
+                                       width=width, height=height, series=tif.series[0],
+                                       intensity_ranges=metadata['Ranges'] if 'Ranges' in metadata else None)
 
 
 def retrieve_image(image_arr, frame, channel=0, number_of_frames=1):
