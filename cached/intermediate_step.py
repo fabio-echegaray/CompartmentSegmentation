@@ -1,24 +1,25 @@
 import os
-import numpy as np
-from tifffile import imsave
+import pickle
 
-from image_loader import load_tiff
+import parameters
 from logger import get_logger
 
 log = get_logger(name='cached_ops')
 
 
 def cached_step(filename, function, *args, cache_folder=None, override_cache=False, **kwargs):
-    assert filename[-4:] == "tiff", "Function only supported for tiff images currently."
     cache_folder = os.path.abspath(".") if cache_folder is None else cache_folder
     output_path = os.path.join(cache_folder, filename)
-    if not os.path.exists(output_path) or override_cache:
+    if not os.path.exists(output_path) or override_cache or not parameters.use_cache:
         log.debug(f"Generating data for step that calls function {function.__name__}.")
         out = function(*args, **kwargs)
         log.debug(f"Saving image {filename} in cache (path={output_path}).")
-        imsave(output_path, np.array(out))
+        if parameters.use_cache:
+            with open(output_path, 'wb') as f:
+                pickle.dump(out, f)
         return out
     else:
         log.debug(f"Loading image {filename} from cache (path={output_path}).")
-        tiff = load_tiff(output_path)
-        return tiff.image[0]
+        with open(output_path, 'rb') as f:
+            obj = pickle.load(f)
+        return obj

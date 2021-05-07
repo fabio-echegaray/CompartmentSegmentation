@@ -41,6 +41,9 @@ class CachedImageFile:
         self.all_planes = self.images_md.findall('ome:Pixels/ome:Plane', self.ome_ns)
 
         self.timestamps = sorted(np.unique([p.get('DeltaT') for p in self.all_planes]))
+        self.channels = sorted(np.unique([p.get('TheC') for p in self.all_planes]))
+        self.zstacks = sorted(np.unique([p.get('TheZ') for p in self.all_planes]))
+        self.frames = sorted(np.unique([p.get('TheT') for p in self.all_planes]))
         self.um_per_pix = float(self.planes_md.get('PhysicalSizeX')) if \
             self.planes_md.get('PhysicalSizeX') == self.planes_md.get('PhysicalSizeY') else np.nan
 
@@ -52,6 +55,11 @@ class CachedImageFile:
             import bioformats as bf
 
             javabridge.start_vm(class_path=bf.JARS, run_headless=True)
+
+    def ix_at(self, c, z, t):
+        for i, plane in enumerate(self.all_planes):
+            if int(plane.get('TheC')) == c and int(plane.get('TheZ')) == z and int(plane.get('TheT')) == t:
+                return i
 
     def image(self, *args):
         if len(args) == 1 and isinstance(args[0], int):
