@@ -1,7 +1,7 @@
 import sys
 import logging
 
-# import pandas as pd
+import pandas as pd
 import numpy as np
 
 log_dict = dict()
@@ -21,10 +21,10 @@ class LogMixin:
             # self.logger.addHandler(console)
             log_dict[name] = self.logger
 
-        # pd.set_option('display.width', 1000)
-        # pd.set_option('display.max_rows', 50)
-        # pd.set_option('display.max_columns', 500)
-        # pd.set_option('display.max_colwidth', 100)
+        pd.set_option('display.width', 1000)
+        pd.set_option('display.max_rows', 50)
+        pd.set_option('display.max_columns', 500)
+        pd.set_option('display.max_colwidth', 100)
         np.set_printoptions(1)
 
         logging.getLogger('shapely').setLevel(logging.INFO)

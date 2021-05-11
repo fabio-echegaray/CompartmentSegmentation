@@ -1,5 +1,6 @@
 import numpy as np
 import javabridge
+from collections import Counter
 
 import pandas as pd
 
@@ -13,6 +14,7 @@ import seaborn as sns
 
 from cached import CachedImageFile, cached_step
 from logger import get_logger
+from measurements import concentric, simple_polygon
 from render import render_polygon
 from segmentation.compartments import segment_compartments_from_holes
 from tools import annotated_boxplot
@@ -37,9 +39,18 @@ if __name__ == "__main__":
     compartments = cached_step(f"z{img_md.z}c{img_md.channel}t{img_md.frame}-bags.obj",
                                segment_compartments_from_holes, img_md.image,
                                cache_folder=cdir, override_cache=True)
-    comp = pd.DataFrame(compartments)
-    comp.loc[:, 'area'] = comp['boundary'].apply(lambda c: c.area)
-    print(comp)
+    comps_df = pd.DataFrame(compartments)
+    comps_df.loc[:, 'area'] = comps_df['boundary'].apply(lambda c: c.area)
+    comps_df.loc[:, 'radius'] = comps_df['area'].apply(lambda a: np.sqrt(a) / np.pi)
+    # comps_df.assign(area=lambda r: r['boundary'].area)
+    comps_df = (comps_df
+                .pipe(simple_polygon)
+                .pipe(concentric)
+                )
+    number_of_concentric_polygons = Counter(comps_df['concentric'])
+    comps_df = comps_df[comps_df['concentric'].isin([k for k, v in number_of_concentric_polygons.items() if v > 3])]
+    print(comps_df)
+    print(number_of_concentric_polygons)
 
     # compute properties of compartments
     areas = [c['boundary'].area for c in compartments]
@@ -51,47 +62,59 @@ if __name__ == "__main__":
 
     # Plot results
     log.info("First plot")
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(8, 3.2), dpi=150)  # , sharex=True, sharey=True)
-    ax1.imshow(img_md.image, cmap='gray')
+    fig = plt.figure(figsize=(3, 4), dpi=150)
+    ax = fig.gca()
+    ax.imshow(img_md.image, cmap='gray')
     # n_um = affinity.scale(selected_nucleus, xfact=me.um_per_pix, yfact=me.um_per_pix, origin=(0, 0, 0))
-    offsets = sorted(comp['offset'].unique())
-    level_palette = sns.color_palette("mako", n_colors=len(offsets))
+    offsets = sorted(comps_df['concentric'].unique())
+    level_palette = sns.color_palette("hls", n_colors=len(offsets))
     offset_map = {o: k for k, o in enumerate(offsets)}
-    for c in compartments:
+    for ix, c in comps_df.iterrows():
         polygon = c['boundary']
         if 2000 < polygon.area < 10e4:
-            render_polygon(polygon, c=level_palette[offset_map[c['offset']]], zorder=100, ax=ax1)
-        if 10e4 < polygon.area:
-            render_polygon(polygon, c='red', zorder=100, ax=ax1)
+            render_polygon(polygon, c=level_palette[offset_map[c['concentric']]], zorder=100, ax=ax)
+    for cn in comps_df['concentric'].unique():
+        pol = comps_df.loc[comps_df['concentric'] == cn].iloc[0]['boundary']
+        ax.text(pol.centroid.x, pol.centroid.y, int(cn), zorder=10, fontsize=7,
+                bbox={'facecolor': 'white', 'linewidth': 0, 'alpha': 0.5, 'pad': 2})
     sm = plt.cm.ScalarMappable(cmap=mpl.colors.ListedColormap(level_palette))
-    # sm.set_array([])
-    cb1 = plt.colorbar(sm, ax=ax1, boundaries=offsets, orientation='horizontal')
+    cb1 = plt.colorbar(sm, ax=ax, boundaries=offsets, orientation='horizontal')
 
-    ax1.axis('off')
-    ax1.set_title('Myosin')
-
-    # ax2.imshow(img_as_ubyte(rescale_intensity(embryo, out_range=(0, 1))), cmap='magma')
-    # ax2.axis('off')
-    # ax2.set_title('Embryo mask')
-
-    # ax3.imshow(compartments, cmap='gray')
-    ax3.axis('off')
-    ax3.set_title('Compartments')
-
+    ax.axis('off')
+    ax.set_title('Myosin')
     fig.tight_layout()
     plt.savefig("segmentation.pdf")
 
     # --------------------------------------
-    #  Next Image
+    #  Next Plot
     # --------------------------------------
     log.info("Second plot")
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 12), dpi=150)  # , sharex=True, sharey=True)
-    annotated_boxplot(comp[comp['area'] > 200], 'area', group='offset', ax=ax1)
-    ax1.set_ylim([0, 10e3])
-    ax1.set_xlabel('offset level')
-    ax1.set_title('Blob area')
+    fig = plt.figure(figsize=(10, 3.2), dpi=150)
+    ax = fig.gca()
+    annotated_boxplot(comps_df[comps_df['area'] > 200], 'area', group='offset', ax=ax)
 
+    ax.set_ylim([0, 10e3])
+    ax.set_xlabel('offset level')
+    ax.set_title('Blob area')
     fig.tight_layout()
     plt.savefig("compartments.pdf")
+
+    # --------------------------------------
+    #  Next Plot
+    # --------------------------------------
+    log.info("Third plot")
+    fig = plt.figure(figsize=(10, 4), dpi=150)
+    ax = fig.gca()
+    comp_tidy = comps_df.melt(id_vars=['offset', 'concentric'], value_vars=['radius'])
+    sns.scatterplot(x='offset', y='radius',
+                    data=comps_df,
+                    hue='concentric', style='concentric',
+                    palette=sns.color_palette("hls", n_colors=len(offsets)))
+
+    ax.set_ylim([0, 40])
+    ax.set_xlabel('offset level')
+    ax.set_title('Blob geometrical features')
+    fig.tight_layout()
+    plt.savefig("geometry_features.pdf")
 
     javabridge.kill_vm()
