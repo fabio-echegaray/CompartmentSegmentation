@@ -111,7 +111,7 @@ if __name__ == "__main__":
                     hue='concentric', style='concentric',
                     palette=sns.color_palette("hls", n_colors=len(offsets)))
 
-    ax.set_ylim([0, 40])
+    ax.set_ylim([0, 50])
     ax.set_xlabel('offset level')
     ax.set_title('Blob geometrical features')
     fig.tight_layout()
