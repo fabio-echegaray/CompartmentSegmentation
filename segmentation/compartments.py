@@ -1,4 +1,6 @@
 import numpy as np
+import pandas as pd
+
 from skimage import img_as_bool, img_as_float, img_as_ubyte
 from skimage.filters import threshold_local
 from skimage.exposure import rescale_intensity
@@ -8,6 +10,8 @@ from skimage.util import invert
 from skimage.filters.rank import entropy
 from shapely.geometry import Polygon
 
+from cached import CachedImageFile, cached_step
+from measurements import concentric, simple_polygon
 from logger import get_logger
 
 log = get_logger(name='segmentation-compartment')
@@ -29,7 +33,7 @@ def segment_compartments_from_holes(image):
 
         # store all contours found
         contours = find_contours(label_image, 0.9)
-        log.debug(f"Number of blobs found at offset {offst} ={len(contours)}. "
+        log.debug(f"Number of blobs found at offset {offst} ={len(contours):d}. "
                   f"Local threshold stats: min={np.min(local_thresh):4.1f} max={np.max(local_thresh):4.1f}")
 
         for contr in contours:
@@ -44,3 +48,29 @@ def segment_compartments_from_holes(image):
                 })
 
     return segmented_polygons
+
+
+def segment_zstack(image_structure: CachedImageFile, channel=0, frame=0) -> pd.DataFrame:
+    # iterate through z in the z-stacks and segment compartments
+    out = pd.DataFrame()
+    for z in image_structure.zstacks:
+        # get the image based on the metadata given index
+        ix = image_structure.ix_at(c=channel, z=z, t=frame)
+        if ix is None:
+            continue
+        img_md = image_structure.image(ix)
+
+        log.debug(f"Processing image at z={z}.")
+
+        cdir = image_structure.cache_path
+        compartments = cached_step(f"z{img_md.z}c{img_md.channel}t{img_md.frame}-bags.obj",
+                                   segment_compartments_from_holes, img_md.image,
+                                   cache_folder=cdir)
+        df = pd.DataFrame(compartments)
+        df.loc[:, 'z'] = z
+        df = (df
+              .pipe(simple_polygon)
+              .pipe(concentric)
+              )
+        out = out.append(df)
+    return out.reset_index(drop=True)

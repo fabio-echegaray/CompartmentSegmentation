@@ -13,13 +13,13 @@ def cached_step(filename, function, *args, cache_folder=None, override_cache=Fal
     if not os.path.exists(output_path) or override_cache or not parameters.use_cache:
         log.debug(f"Generating data for step that calls function {function.__name__}.")
         out = function(*args, **kwargs)
-        log.debug(f"Saving image {filename} in cache (path={output_path}).")
+        log.debug(f"Saving object {filename} in cache (path={output_path}).")
         if parameters.use_cache:
             with open(output_path, 'wb') as f:
                 pickle.dump(out, f)
         return out
     else:
-        log.debug(f"Loading image {filename} from cache (path={output_path}).")
+        log.debug(f"Loading object {filename} from cache (path={output_path}).")
         with open(output_path, 'rb') as f:
             obj = pickle.load(f)
         return obj

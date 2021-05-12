@@ -115,26 +115,22 @@ def simple_polygon(polygons: pd.DataFrame) -> pd.DataFrame:
 
 def concentric(polygons: pd.DataFrame) -> pd.DataFrame:
     """
-    Extracts polygons that don't touch and have a common centre
+    Label polygons that don't touch and have a common centre
     """
-    con_id = 1
-    if polygons is None:
-        return []
-    polygons.loc[:, 'concentric'] = np.nan
+    log.debug("Labelling concentric polygons.")
     p = polygons
-    for ix1, ix2 in itertools.combinations(polygons.index, 2):
+    p = p.assign(concentric=0)
+    con_id = 1
+    for ix1, ix2 in itertools.combinations(p.index, 2):
         if p.loc[ix1, 'boundary'].contains(p.loc[ix2, 'boundary']):
-            if np.isnan(p.loc[ix2, 'concentric']):
+            if p.loc[ix2, 'concentric'] == 0:
                 p.loc[ix2, 'concentric'] = con_id
                 con_id += 1
             p.loc[ix1, 'concentric'] = p.loc[ix2, 'concentric']
         if p.loc[ix2, 'boundary'].contains(p.loc[ix1, 'boundary']):
-            if np.isnan(p.loc[ix1, 'concentric']):
+            if p.loc[ix1, 'concentric'] == 0:
                 p.loc[ix1, 'concentric'] = con_id
                 con_id += 1
             p.loc[ix2, 'concentric'] = p.loc[ix1, 'concentric']
 
-    polygons = polygons[~polygons['concentric'].isna()]
-    polygons.loc[:, 'concentric'] = polygons.loc[:, 'concentric'].astype(int)
-
-    return polygons
+    return p[p['concentric'] > 0]

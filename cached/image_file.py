@@ -40,10 +40,10 @@ class CachedImageFile:
         self.planes_md = self.images_md.find('ome:Pixels', self.ome_ns)
         self.all_planes = self.images_md.findall('ome:Pixels/ome:Plane', self.ome_ns)
 
-        self.timestamps = sorted(np.unique([p.get('DeltaT') for p in self.all_planes]))
-        self.channels = sorted(np.unique([p.get('TheC') for p in self.all_planes]))
-        self.zstacks = sorted(np.unique([p.get('TheZ') for p in self.all_planes]))
-        self.frames = sorted(np.unique([p.get('TheT') for p in self.all_planes]))
+        self.timestamps = sorted(np.unique([p.get('DeltaT') for p in self.all_planes]).astype(np.float64))
+        self.channels = sorted(np.unique([p.get('TheC') for p in self.all_planes]).astype(int))
+        self.zstacks = sorted(np.unique([p.get('TheZ') for p in self.all_planes]).astype(int))
+        self.frames = sorted(np.unique([p.get('TheT') for p in self.all_planes]).astype(int))
         self.um_per_pix = float(self.planes_md.get('PhysicalSizeX')) if \
             self.planes_md.get('PhysicalSizeX') == self.planes_md.get('PhysicalSizeY') else np.nan
 
