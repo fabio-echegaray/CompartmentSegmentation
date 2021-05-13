@@ -25,13 +25,13 @@ def nucleus(df: pd.DataFrame, nucleus_col='nucleus', radius_min=0, radius_max=np
     return df[n_idx]
 
 
-def polsby_popper(df: pd.DataFrame, column):
+def polsby_popper(df: pd.DataFrame, column, pp_threshold=0.8):
     def _pp(_df):
         # pol = shapely.wkt.loads(_df[column])
         pol = _df[column]
         pp = pol.area * np.pi * 4 / pol.length ** 2
-        return pp > 0.8
+        return pp > pp_threshold
 
-    log.info("Filtering %s with a Polsby-Popper score greater than %0.2f." % (column, 0.8))
+    log.info("Filtering %s with a Polsby-Popper score greater than %0.2f." % (column, pp_threshold))
     n_idx = df.apply(_pp, axis=1)
     return df[n_idx]

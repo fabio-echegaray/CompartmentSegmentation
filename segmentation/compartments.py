@@ -26,7 +26,7 @@ def segment_compartments_from_holes(image):
     entr_img = invert(entr_img)
 
     segmented_polygons = list()
-    for offst in np.arange(start=70, stop=300, step=10):
+    for offst in np.arange(start=1, stop=300, step=1):
         local_thresh = threshold_local(entr_img, block_size=35, offset=offst)
         binary_local = img_as_bool(local_thresh)
         label_image = label(binary_local)

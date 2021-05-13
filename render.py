@@ -12,7 +12,7 @@ from logger import get_logger
 log = get_logger(name='render')
 
 
-def render_polygon(polygon: Polygon, zorder=0, c='red', ax=None):
+def render_polygon(polygon: Polygon, zorder=0, c='red', ax=None, alpha=1.0, draw_hatch=True):
     """
         These next two functions are taken from Sean Gillies
         https://sgillies.net/2010/04/06/painting-punctured-polygons-with-matplotlib.html
@@ -41,12 +41,14 @@ def render_polygon(polygon: Polygon, zorder=0, c='red', ax=None):
         ax = plt.gca()
 
     x, y = polygon.exterior.xy
-    ax.plot(x, y, color=c, linestyle="--", linewidth=0.5, solid_capstyle='round', zorder=zorder)
+    ax.plot(x, y, color=c, linestyle="--", linewidth=0.5, solid_capstyle='round', zorder=zorder, alpha=alpha)
 
-    path = pathify(polygon)
-    patch = PathPatch(path, facecolor='none', edgecolor=c, hatch='/////', lw=0.01, zorder=zorder)
+    if draw_hatch:
+        path = pathify(polygon)
+        patch = PathPatch(path, facecolor='none', edgecolor=c, hatch='/////', lw=0.01, zorder=zorder, alpha=alpha)
 
-    ax.add_patch(patch)
+        ax.add_patch(patch)
+
     ax.set_aspect(1.0)
 
-    return patch
+    return
