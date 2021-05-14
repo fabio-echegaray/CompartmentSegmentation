@@ -10,7 +10,7 @@ import seaborn as sns
 from cached import CachedImageFile, cached_step
 from filters import polsby_popper
 from render import render_polygon
-from segmentation.compartments import segment_zstack
+from segmentation.compartments import segment_zstack, cluster_by_centroid
 from logger import get_logger
 
 log = get_logger(name='__main__')
@@ -39,6 +39,8 @@ if __name__ == "__main__":
                 # .pipe(lambda df: df[df['offset'] > 80])
                 .pipe(lambda df: df[(df['area'] > 500) & (df['area'] < 10e4)])
                 .pipe(polsby_popper, 'boundary', pp_threshold=0.7)
+                .pipe(cluster_by_centroid, eps=0.13)
+                .pipe(lambda df: df[df['cluster'] > 0])
                 )
 
     # --------------------------------------
@@ -53,22 +55,35 @@ if __name__ == "__main__":
     offset_stats = comps_df.groupby(['z', 'concentric'])['offset'].describe()
     print("Offset stats per z and concentric cluster:\n", offset_stats)
     offset_stats.to_excel("offset.xlsx")
+    clustering_stats = comps_df.groupby(['cluster'])['offset'].describe()
+    print("Cluster stats:\n", clustering_stats)
+    clustering_stats.to_excel("cluster.xlsx")
 
     offsets = sorted(comps_df['offset'].unique())
     level_palette = sns.color_palette("viridis", n_colors=len(offsets))
     offset_map = {o: k for k, o in enumerate(offsets)}
 
+    center_clusters = sorted(comps_df['cluster'].unique())
+    center_palette = sns.color_palette("tab10", n_colors=len(center_clusters))
+    center_map = {o: k for k, o in enumerate(center_clusters)}
+
+    cluster_strength = Counter(comps_df['cluster'])
+    cs_palette = sns.color_palette("rocket", n_colors=max(cluster_strength.values()))
+    cs_map = {k: cluster_strength[k] - 1 for k in cluster_strength.keys()}
+
     # --------------------------------------
     #  Plot
     # --------------------------------------
     log.info("Plot of all level curves in one projected graph.")
-    fig = plt.figure(figsize=(4, 3), dpi=150)
+    fig = plt.figure(figsize=(4, 3), dpi=300)
     ax = fig.gca()
     for ix, c in comps_df.iterrows():
         polygon = c['boundary']
         render_polygon(polygon, c=level_palette[offset_map[c['offset']]], alpha=0.3, draw_hatch=False, zorder=100,
                        ax=ax)
-        ax.plot(polygon.centroid.x, polygon.centroid.y, c='k', marker='+', zorder=1000)
+        ax.plot(polygon.centroid.x, polygon.centroid.y,
+                c=center_palette[center_map[c['cluster']]],
+                marker='+', zorder=1000)
     sm = plt.cm.ScalarMappable(cmap=mpl.colors.ListedColormap(level_palette))
     cb1 = plt.colorbar(sm, ax=ax, boundaries=offsets, orientation='vertical')
 
@@ -92,11 +107,11 @@ if __name__ == "__main__":
 
         for ix, c in data.iterrows():
             polygon = c['boundary']
-            render_polygon(polygon, c=level_palette[offset_map[c['offset']]], zorder=100, ax=ax)
-        for cn in data['concentric'].unique():
-            df = data.loc[comps_df['concentric'] == cn]
+            render_polygon(polygon, c=cs_palette[cs_map[c['cluster']]], zorder=100, ax=ax)
+        for cn in data['cluster'].unique():
+            df = data.loc[comps_df['cluster'] == cn]
             pol = df[df['area'] == min(df['area'])]['boundary'].iloc[0]
-            ax.text(pol.centroid.x, pol.centroid.y, int(cn), c='white', zorder=10, fontsize=7,
+            ax.text(pol.centroid.x, pol.centroid.y, int(cn), c='white', zorder=110, fontsize=7,
                     # bbox={'facecolor': 'white', 'linewidth': 0, 'alpha': 0.5, 'pad': 2}
                     )
 
@@ -109,7 +124,7 @@ if __name__ == "__main__":
                       gridspec_kws={"wspace": 0.4}
                       )
     g.map_dataframe(segmentations)
-    g.savefig("slices.pdf")
+    g.savefig("slices.png", dpi=300)
 
     # --------------------------------------
     #  Plot

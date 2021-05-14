@@ -10,6 +10,9 @@ from skimage.util import invert
 from skimage.filters.rank import entropy
 from shapely.geometry import Polygon
 
+from sklearn.cluster import DBSCAN
+from sklearn.preprocessing import StandardScaler
+
 from cached import CachedImageFile, cached_step
 from measurements import concentric, simple_polygon
 from logger import get_logger
@@ -74,3 +77,14 @@ def segment_zstack(image_structure: CachedImageFile, channel=0, frame=0) -> pd.D
               )
         out = out.append(df)
     return out.reset_index(drop=True)
+
+
+def cluster_by_centroid(df: pd.DataFrame, eps=0.01, min_samples=10) -> pd.DataFrame:
+    X = df['boundary'].apply(lambda b: b.centroid.coords[:]).values
+    X = np.array([item for sublist in X for item in sublist])
+    X = StandardScaler().fit_transform(X)
+
+    # Compute DBSCAN
+    db = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
+
+    return df.assign(cluster=db.labels_)
