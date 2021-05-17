@@ -32,9 +32,6 @@ if __name__ == "__main__":
     comps_df.loc[:, 'radius'] = comps_df['area'].apply(lambda a: np.sqrt(a) / np.pi)
     # filter by number of concentric polygons of each subset
     print([i for i, r in comps_df.groupby(['z', 'concentric']).count().iterrows()])
-    comps_df = comps_df[comps_df[['z', 'concentric']].apply(tuple, axis=1).isin(
-        [i for i, r in comps_df.groupby(['z', 'concentric']).count().iterrows() if r['offset'] > 10]
-        )]
     comps_df = (comps_df
                 # .pipe(lambda df: df[df['offset'] > 80])
                 .pipe(lambda df: df[(df['area'] > 500) & (df['area'] < 10e4)])
@@ -98,10 +95,8 @@ if __name__ == "__main__":
     log.info("Plot of all the segmentations, per offset level, separated by z-stack value.")
 
 
-    def segmentations(*args, **kwargs):
-        ax = plt.gca()
-        data = kwargs.pop("data")
-        mdi = img_struc.image(img_struc.ix_at(c=0, z=data['z'].iloc[0], t=8))
+    def segmentations(ax, data, c=0, z=0, t=8):
+        mdi = img_struc.image(img_struc.ix_at(c=c, z=z, t=t))
         ax.imshow(mdi.image, cmap='gray')
         # n_um = affinity.scale(selected_nucleus, xfact=me.um_per_pix, yfact=me.um_per_pix, origin=(0, 0, 0))
 
@@ -116,15 +111,23 @@ if __name__ == "__main__":
                     )
 
 
-    g = sns.FacetGrid(data=comps_df,
-                      row='z',
-                      # ylim=[0, 50],
-                      height=3, aspect=1.65,
-                      despine=True, margin_titles=True,
-                      gridspec_kws={"wspace": 0.4}
-                      )
-    g.map_dataframe(segmentations)
-    g.savefig("slices.png", dpi=300)
+    print(img_struc.zstacks)
+    fig, f_axes = plt.subplots(ncols=4, nrows=5, constrained_layout=True, figsize=(10, 12),
+                               sharex=True, sharey=True,
+                               subplot_kw=dict(aspect=1),
+                               gridspec_kw=dict(wspace=0.01, hspace=0.01),
+                               )
+    for r, row in enumerate(f_axes):
+        for c, ax in enumerate(row):
+            z = r * 4 + c
+            in_zstack = z in img_struc.zstacks
+            # label = f'Col: {c}\nRow: {r}\n z={z} {"in zstack" if in_zstack else "not found"}'
+            # ax.annotate(label, (0.1, 0.5), xycoords='axes fraction', va='center')
+            if in_zstack:
+                dat = comps_df.query("z == @z")
+                segmentations(ax, dat, z=z)
+    fig.tight_layout()
+    fig.savefig("slices.png", dpi=300)
 
     # --------------------------------------
     #  Plot
