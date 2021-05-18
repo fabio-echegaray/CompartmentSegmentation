@@ -46,6 +46,8 @@ class CachedImageFile:
         self.frames = sorted(np.unique([p.get('TheT') for p in self.all_planes]).astype(int))
         self.um_per_pix = float(self.planes_md.get('PhysicalSizeX')) if \
             self.planes_md.get('PhysicalSizeX') == self.planes_md.get('PhysicalSizeY') else np.nan
+        self.width = int(self.planes_md.get('SizeX'))
+        self.height = int(self.planes_md.get('SizeY'))
 
         self.log.info(f"{len(self.all_planes)} image planes in total.")
 
