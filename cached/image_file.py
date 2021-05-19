@@ -1,7 +1,10 @@
 import os
+import pathlib
+from datetime import datetime
 from collections import namedtuple
 
 import numpy as np
+import pandas as pd
 from xml.etree import ElementTree as ET
 
 from image_loader import load_tiff
@@ -25,18 +28,19 @@ class CachedImageFile:
     ome_ns = {'ome': 'http://www.openmicroscopy.org/Schemas/OME/2016-06'}
     log = get_logger(name='CachedImageFile')
 
-    def __init__(self, image_path: str, image_series=0):
+    def __init__(self, image_path: str, image_series=0, cache_results=True):
         self.image_path = os.path.abspath(image_path)
         self.base_path = os.path.dirname(self.image_path)
         self.cache_path = os.path.join(self.base_path, '_cache')
-        self.render_path = ensure_dir(os.path.join(self.base_path, '_cache', 'out', 'render'))
-
+        self.render_path = os.path.join(self.cache_path, 'out', 'render')
+        self._use_cache = cache_results
         self._jvm_on = False
 
         self.metadata_path = os.path.join(self.cache_path, 'ome_image_info.xml')
         self.md = self._get_metadata()
         self.images_md = self.md.findall('ome:Image', self.ome_ns)[image_series]
         self.instrument_md = self.md.findall('ome:Instrument', self.ome_ns)
+        self.objectives_md = self.md.findall('ome:Instrument/ome:Objective', self.ome_ns)
         self.planes_md = self.images_md.find('ome:Pixels', self.ome_ns)
         self.all_planes = self.images_md.findall('ome:Pixels/ome:Plane', self.ome_ns)
 
@@ -51,12 +55,55 @@ class CachedImageFile:
 
         self.log.info(f"{len(self.all_planes)} image planes in total.")
 
+        if self._use_cache:
+            ensure_dir(self.metadata_path)
+            ensure_dir(self.render_path)
+
     def _check_jvm(self):
         if not self._jvm_on:
             import javabridge
             import bioformats as bf
 
             javabridge.start_vm(class_path=bf.JARS, run_headless=True)
+
+    @property
+    def info(self) -> pd.DataFrame:
+        fname_stat = pathlib.Path(self.image_path).stat()
+        fcreated = datetime.fromtimestamp(fname_stat.st_ctime).strftime("%a %b/%d/%Y, %H:%M:%S")
+        fmodified = datetime.fromtimestamp(fname_stat.st_mtime).strftime("%a %b/%d/%Y, %H:%M:%S")
+        series_info = list()
+        for imageseries in self.md.findall('ome:Image', self.ome_ns):
+            instrument = imageseries.find('ome:InstrumentRef', self.ome_ns)
+            obj_id = imageseries.find('ome:ObjectiveSettings', self.ome_ns).get('ID')
+            objective = self.md.find(f'ome:Instrument/ome:Objective[@ID="{obj_id}"]', self.ome_ns)
+            imgseries_pixels = imageseries.findall('ome:Pixels', self.ome_ns)
+            for isr_pixels in imgseries_pixels:
+                size_x = float(isr_pixels.get('PhysicalSizeX'))
+                size_y = float(isr_pixels.get('PhysicalSizeY'))
+                size_z = float(isr_pixels.get('PhysicalSizeZ'))
+                size_x_unit = isr_pixels.get('PhysicalSizeXUnit')
+                size_y_unit = isr_pixels.get('PhysicalSizeYUnit')
+                size_z_unit = isr_pixels.get('PhysicalSizeZUnit')
+                series_info.append({
+                    'filename':                          os.path.basename(self.image_path),
+                    'instrument_id':                     instrument.get('ID'),
+                    'pixels_id':                         isr_pixels.get('ID'),
+                    'channels':                          int(isr_pixels.get('SizeC')),
+                    'z-stacks':                          int(isr_pixels.get('SizeZ')),
+                    'frames':                            int(isr_pixels.get('SizeT')),
+                    'width':                             self.width,
+                    'height':                            self.height,
+                    'data_type':                         isr_pixels.get('Type'),
+                    'objective_id':                      obj_id,
+                    'magnification':                     objective.get('NominalMagnification'),
+                    'pixel_size':                        (size_x, size_y, size_z),
+                    'pixel_size_unit':                   (size_x_unit, size_y_unit, size_z_unit),
+                    'pix_per_um':                        (1 / size_x, 1 / size_y, 1 / size_z),
+                    'change (Unix), creation (Windows)': fcreated,
+                    'most recent modification':          fmodified,
+                    })
+        out = pd.DataFrame(series_info)
+        return out
 
     def ix_at(self, c, z, t):
         for i, plane in enumerate(self.all_planes):
@@ -67,17 +114,15 @@ class CachedImageFile:
         if len(args) == 1 and isinstance(args[0], int):
             ix = args[0]
             plane = self.all_planes[ix]
-            # return self._image(c=plane.get('TheC'), z=plane.get('TheZ'), t=plane.get('TheT'), row=0, col=0, fid=0)
-            return self._image(plane)
+            return self._image(plane, row=0, col=0, fid=0)
 
-    # def _image(self, c=0, z=0, t=0, row=0, col=0, fid=0):
-    def _image(self, plane):
-        c, z, t, row, col, fid = plane.get('TheC'), plane.get('TheZ'), plane.get('TheT'), 0, 0, 0
+    def _image(self, plane, row=0, col=0, fid=0):
+        c, z, t = plane.get('TheC'), plane.get('TheZ'), plane.get('TheT')
         # logger.debug('retrieving image id=%d row=%d col=%d fid=%d' % (_id, row, col, fid))
         # check if file is in cache
         fname = f"{row}{col}{fid}-{c}{z}{t}.tif"
         fpath = os.path.join(self.cache_path, fname)
-        if os.path.exists(fpath):
+        if os.path.exists(fpath) and self._use_cache:
             self.log.debug(f"Loading image {fname} from cache.")
             tiff = load_tiff(fpath)
             image = tiff.image[0]
@@ -101,18 +146,18 @@ class CachedImageFile:
         self._check_jvm()
 
         self.log.debug(f"metadata_path is {self.metadata_path}.")
-        if not os.path.exists(self.metadata_path):
-            self.log.warning("File ome_image_info.xml is missing in the folder structure, generating it now.\r\n"
-                             "\tNew folders with the names '_cache' will be created. "
-                             "You can safely delete this folder if you don't want \n\n"
-                             "any of the analysis output from this tool.\r\n")
-            ensure_dir(self.metadata_path)
-            ensure_dir(self.render_path)
-
+        if not os.path.exists(self.metadata_path) and self._use_cache:
             import bioformats as bf
             md = bf.get_omexml_metadata(self.image_path)
-            with open(self.metadata_path, 'w') as mdf:
-                mdf.write(md)
+
+            if self._use_cache:
+                self.log.warning("File ome_image_info.xml is missing in the folder structure, generating it now.\r\n"
+                                 "\tNew folders with the names '_cache' will be created. "
+                                 "You can safely delete this folder if you don't want \n\n"
+                                 "any of the analysis output from this tool.\r\n")
+
+                with open(self.metadata_path, 'w') as mdf:
+                    mdf.write(md)
 
             md = ET.fromstring(md.encode("utf-8"))
 
